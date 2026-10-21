@@ -5,7 +5,12 @@ Dashboard para seguir El Niño 2026-27 en el Perú: qué regiones están más af
 - **Hoy**: estado oficial del ENFEN, anomalía del mar en la región Niño 1+2, avisos SENAMHI, regiones más afectadas, comparación de 2026 con los Niños de 1982-83, 1997-98, 2015-16, 2017 y 2023-24, el mar en la costa, el pronóstico de lluvia y el PBI.
 - **Mapa vivo**: regiones coloreadas por afectación, lluvia, sequía, pronóstico o avisos; mar y lluvia por satélite con animación de 30 días; al tocar el mar se ve su temperatura y al tocar una región, su ficha.
 
-## Cómo correrlo
+Sitio: https://inberninzon.github.io/monitor-fen-peru/
+
+## Actualizar los datos
+Doble clic en `actualizar.command` (o `./actualizar.command` en la terminal). El pipeline corre en la Mac porque desde los servidores de GitHub no se llega a SENAMHI ni al ENFEN.
+
+## Cómo correrlo en local
 
 ```bash
 cd pipeline && python3 run_all.py      # descarga y procesa los datos (≈2 min; la primera vez ≈5 min)
@@ -20,7 +25,8 @@ cd app && npm install && npm run dev   # abre http://localhost:5173
 | `pipeline/cache/` | Normal climática ERA5 ya descargada (solo se piden los días nuevos). |
 | `app/public/data/` | JSON que lee la página. |
 | `app/src/` | Página en React + TypeScript, con MapLibre (mapa) y ECharts (gráficos). |
-| `.github/workflows/actualizar.yml` | Corre el pipeline a las 6:00 y 18:00 (hora de Lima) y publica en GitHub Pages. |
+| `actualizar.command` | Corre el pipeline en la Mac y sube los datos a GitHub (doble clic). |
+| `.github/workflows/publicar.yml` | Cada vez que llega algo a `main`, arma el sitio y lo publica en GitHub Pages. |
 | `docs/inventario-fuentes.md` | Fuentes probadas y su estado. |
 
 ## Fuentes
