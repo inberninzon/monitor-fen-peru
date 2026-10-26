@@ -1,13 +1,22 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
 
-// Contenedor de ECharts: se redimensiona con su caja y se rehace al cambiar el tema
-export function Chart({ option, className = "chart", label, onReady }: {
+// Contenedor de ECharts: se redimensiona con su caja y se rehace al cambiar el tema.
+// Con `diferido`, el gráfico se dibuja (y se anima) recién cuando entra en pantalla.
+export function Chart({ option, className = "chart", label, onReady, diferido = false }: {
   option: echarts.EChartsCoreOption; className?: string; label: string;
-  onReady?: (c: echarts.ECharts) => void;
+  onReady?: (c: echarts.ECharts) => void; diferido?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inst = useRef<echarts.ECharts | null>(null);
+  const [visible, setVisible] = useState(!diferido);
+
+  useEffect(() => {
+    if (visible || !ref.current) return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVisible(true); io.disconnect(); } }, { threshold: 0.25 });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [visible]);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -20,7 +29,7 @@ export function Chart({ option, className = "chart", label, onReady }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { inst.current?.setOption(option, true); }, [option]);
+  useEffect(() => { if (visible) inst.current?.setOption(option, true); }, [option, visible]);
 
   return <div ref={ref} className={className} role="img" aria-label={label} />;
 }

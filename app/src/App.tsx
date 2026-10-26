@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { cargarDatos, Datos, horaAct } from "./data";
 import { Hoy } from "./views/Hoy";
 import { Mapa, Metrica } from "./views/Mapa";
+import type { GrupoId } from "./kpis";
 import { Fuentes } from "./components/Fuentes";
 
 type Vista = "hoy" | "mapa";
@@ -11,9 +12,12 @@ const leerTema = (): Tema => {
   try { return (localStorage.getItem("fen-tema") as Tema) || "auto"; } catch { return "auto"; }
 };
 
-function leerHash(): { vista: Vista; region: string | null; metrica: Metrica | null } {
+const GRUPOS: GrupoId[] = ["mar", "lluvia", "alertas", "personas", "economia"];
+
+function leerHash(): { vista: Vista; region: string | null; metrica: Metrica | null; grupo: GrupoId } {
   const [v, r, m] = location.hash.replace("#", "").split("/");
-  return { vista: v === "mapa" ? "mapa" : "hoy", region: r || null, metrica: (m as Metrica) || null };
+  const grupo = v !== "mapa" && GRUPOS.includes(r as GrupoId) ? (r as GrupoId) : "mar";
+  return { vista: v === "mapa" ? "mapa" : "hoy", region: v === "mapa" ? r || null : null, metrica: (m as Metrica) || null, grupo };
 }
 
 export function App() {
@@ -23,6 +27,7 @@ export function App() {
   const [vista, setVista] = useState<Vista>(inicial.vista);
   const [region, setRegion] = useState<string | null>(inicial.region);
   const [metrica, setMetrica] = useState<Metrica>(inicial.metrica ?? "indice");
+  const [grupo, setGrupo] = useState<GrupoId>(inicial.grupo);
   const [tema, setTema] = useState<Tema>(leerTema);
   const [fuentes, setFuentes] = useState(false);
   const [, setVersionTema] = useState(0);
@@ -45,9 +50,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const h = vista === "mapa" ? `#mapa/${region ?? ""}/${metrica}` : "#hoy";
+    const h = vista === "mapa" ? `#mapa/${region ?? ""}/${metrica}` : `#hoy/${grupo}`;
     if (location.hash !== h) history.replaceState(null, "", h);
-  }, [vista, region, metrica]);
+  }, [vista, region, metrica, grupo]);
 
   const irAlMapa = useCallback((r: string | null, m?: Metrica) => {
     setRegion(r);
@@ -100,7 +105,7 @@ export function App() {
       <main className="main">
         {error && <div className="loading">No se pudieron cargar los datos: {error}</div>}
         {!datos && !error && <div className="loading">Cargando datos del día…</div>}
-        {datos && vista === "hoy" && <Hoy key={claveTema} datos={datos} irAlMapa={irAlMapa} />}
+        {datos && vista === "hoy" && <Hoy key={claveTema} datos={datos} irAlMapa={irAlMapa} grupo={grupo} setGrupo={setGrupo} />}
         {datos && vista === "mapa" && (
           <Mapa key={`m-${oscuro}`} datos={datos} oscuro={oscuro} region={region} setRegion={setRegion}
             metrica={metrica} setMetrica={setMetrica} />
