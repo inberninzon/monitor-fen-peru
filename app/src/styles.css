@@ -278,10 +278,10 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .kpi2-ctx { font-size: 12.5px; color: var(--text-muted); }
 .kpi2-detalle { padding: 10px 14px 12px; font-size: 12.5px; }
 .kpi2-detalle-t { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
-.kpi2-detalle ul { list-style: none; margin: 0; padding: 0; display: grid; }
-.kpi2-detalle li { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
-.kpi2-detalle li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kpi2-detalle li b { font-weight: 650; white-space: nowrap; }
+.kpi2-detalle ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.kpi2-detalle li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--border); min-width: 0; }
+.kpi2-detalle li > span, .kpi2-detalle li > .link { min-width: 0; overflow-wrap: anywhere; }
+.kpi2-detalle li b { font-weight: 650; white-space: nowrap; flex: none; }
 .kpi2-detalle .go { border: 0; background: transparent; padding: 0; margin-top: 8px; color: var(--accent-ink); font-weight: 700; font-size: 12.5px; cursor: pointer; }
 
 /* Con cursor: la tarjeta se eleva y el desglose flota debajo */
@@ -290,6 +290,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
     position: absolute; top: calc(100% - 6px); left: -1px; right: -1px; z-index: 15;
     background: var(--surface-1); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius) var(--radius);
     box-shadow: 0 14px 28px rgba(0,0,0,.14); opacity: 0; visibility: hidden; transform: translateY(-6px);
+    max-height: 340px; overflow-y: auto; overflow-x: hidden;
     transition: opacity .15s, transform .15s, visibility .15s;
   }
   .kpi2:hover, .kpi2:focus-within { transform: translateY(-3px); z-index: 16; border-color: color-mix(in srgb, var(--est) 55%, var(--border));
@@ -334,11 +335,17 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .rank li button { transition: background .15s; }
 .rank li.foco button { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 
-.pob-barra { display: flex; height: 46px; border-radius: 10px; overflow: hidden; gap: 2px; margin: 6px 0 10px; }
-.pob-barra button { border: 0; padding: 0; min-width: 3px; flex-basis: 0; cursor: pointer; transition: filter .15s, box-shadow .15s; }
-.pob-barra button:hover, .pob-barra button.sel, .pob-barra button:focus-visible { filter: brightness(1.15) saturate(1.2); box-shadow: inset 0 0 0 2px var(--text-primary); outline: none; }
-.c-rojo { background: var(--critical); } .c-alto { background: var(--accent); } .c-extremo { background: var(--sea); } .c-ok { background: var(--axis); }
-.pob-info { min-height: 30px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13.5px; }
+.c-rojo { background: var(--critical); } .c-alto { background: var(--accent); } .c-extremo { background: var(--sea); }
+.pob-rank { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+.pob-rank button {
+  width: 100%; display: grid; grid-template-columns: minmax(100px, 150px) minmax(60px, 1fr) 64px minmax(0, 240px); gap: 12px; align-items: center;
+  border: 0; background: transparent; padding: 7px 6px; border-radius: 10px; cursor: pointer; text-align: left; transition: background .15s;
+}
+.pob-rank button:hover, .pob-rank button:focus-visible { background: var(--surface-2); }
+.pob-rank .nom { font-weight: 600; font-size: 14px; }
+.pob-rank .val { font-weight: 700; text-align: right; }
+.pob-rank .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.pob-pie { font-size: 12.5px; margin: 10px 0 0; }
 .tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; color: #fff; }
 .pob-leyenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-muted); margin-top: 8px; }
 .pob-leyenda i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
@@ -401,6 +408,8 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   .avisos { max-height: none; }
   .seg { width: 100%; } .seg button { flex: 1; padding: 6px 4px; }
   .rank button { grid-template-columns: 22px minmax(90px, 120px) 1fr 34px; gap: 8px; }
+  .pob-rank button { grid-template-columns: minmax(90px, 120px) 1fr 54px; gap: 4px 10px; }
+  .pob-rank .tags { grid-column: 1 / -1; }
 }
 
 /* ---------- Mapa ---------- */
