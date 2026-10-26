@@ -6,7 +6,7 @@ import { KpiCard } from "../components/KpiCard";
 import { Datos, fechaCorta, fmt, horaAct, magnitud, signo } from "../data";
 import { colorIndice, INDICE_RAMP } from "../escalas";
 import { calcularKpis, depsRojoLluvia, ESTADO_NOMBRE, Grupo, GrupoId, UMBRAL, valorTexto } from "../kpis";
-import { POBLACION } from "../poblacion";
+import { POBLACION, POBLACION_PERU } from "../poblacion";
 import type { Metrica } from "./Mapa";
 
 type Props = {
@@ -254,11 +254,14 @@ export function Hoy({ datos, irAlMapa, grupo, setGrupo }: Props) {
   const avisoEnFoco = (deps: string[]) => !!foco && ("region" in foco ? deps.includes(foco.region) : false);
 
   // ---------- Personas: barra de población ----------
-  const [pobFoco, setPobFoco] = useState<string | null>(null);
   const depsRojo = useMemo(() => new Set(depsRojoLluvia(datos)), [datos]);
   const extremo = new Set(grupos.find((g) => g.id === "lluvia")!.kpis.find((k) => k.id === "extremo")?.detalle?.map((d) => d.id!) ?? []);
-  const catPob = (id: string) => (depsRojo.has(id) ? "c-rojo" : regs[id].indice >= UMBRAL.riesgoAlto ? "c-alto" : extremo.has(id) ? "c-extremo" : "c-ok");
-  const porPob = Object.keys(regs).sort((a, b) => (POBLACION[b] ?? 0) - (POBLACION[a] ?? 0));
+  const catPob = (id: string) => (depsRojo.has(id) ? "c-rojo" : regs[id].indice >= UMBRAL.riesgoAlto ? "c-alto" : "c-extremo");
+  const expuestas = Object.keys(regs)
+    .filter((id) => depsRojo.has(id) || regs[id].indice >= UMBRAL.riesgoAlto || extremo.has(id))
+    .sort((a, b) => (POBLACION[b] ?? 0) - (POBLACION[a] ?? 0));
+  const maxPob = Math.max(1, ...expuestas.map((id) => POBLACION[id] ?? 0));
+  const pobExpuesta = expuestas.reduce((s, id) => s + (POBLACION[id] ?? 0), 0);
 
   // ---------- Navegación entre grupos ----------
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -480,37 +483,42 @@ export function Hoy({ datos, irAlMapa, grupo, setGrupo }: Props) {
           <div className="card-head">
             <div>
               <h3 id="pob-t">¿Dónde vive la gente expuesta?</h3>
-              <p>Cada tramo es una región, de ancho proporcional a su población · pasa el cursor o toca un tramo</p>
+              <p>Regiones con aviso rojo por lluvias, riesgo alto o lluvia extrema prevista, ordenadas por población · toca una para verla en el mapa</p>
             </div>
             <span className="spacer" />
             <Info>
-              Población estimada por el INEI para 2025, por departamento. Se marca la región con su exposición más grave:
-              aviso rojo por lluvias (vigente o próximo), riesgo alto en el índice de afectación (≥ {UMBRAL.riesgoAlto}) o lluvia extrema en el pronóstico.
+              Población estimada por el INEI para 2025, por departamento. La barra toma el color de la exposición más grave y las etiquetas
+              muestran todas: aviso rojo por lluvias (vigente o próximo), riesgo alto en el índice de afectación (≥ {UMBRAL.riesgoAlto}) o lluvia extrema en el pronóstico.
               Mide a cuántas personas alcanza el evento, no cuántas están afectadas.
             </Info>
           </div>
-          <div className="pob-barra no-swipe" onMouseLeave={() => setPobFoco(null)}>
-            {porPob.map((id) => (
-              <button key={id} className={`${catPob(id)}${pobFoco === id ? " sel" : ""}`} style={{ flexGrow: POBLACION[id] ?? 0 }}
-                onMouseEnter={() => setPobFoco(id)} onFocus={() => setPobFoco(id)}
-                onClick={() => (pobFoco === id || matchMedia("(hover: hover)").matches ? irAlMapa(id, "indice") : setPobFoco(id))}
-                aria-label={`${regs[id].nombre}: ${fmt((POBLACION[id] ?? 0) / 1e6, 2)} millones de habitantes`} />
-            ))}
-          </div>
-          <div className="pob-info" aria-live="polite">
-            {pobFoco ? (
-              <>
-                <b>{regs[pobFoco].nombre}</b> · {fmt((POBLACION[pobFoco] ?? 0) / 1e6, 2)} M hab. · índice {regs[pobFoco].indice}
-                {depsRojo.has(pobFoco) && <span className="tag c-rojo">aviso rojo por lluvias</span>}
-                {regs[pobFoco].indice >= UMBRAL.riesgoAlto && <span className="tag c-alto">riesgo alto</span>}
-                {extremo.has(pobFoco) && <span className="tag c-extremo">lluvia extrema</span>}
-                <button className="link" onClick={() => irAlMapa(pobFoco, "indice")}>Ver ficha →</button>
-              </>
-            ) : <span className="muted">Lima concentra un tercio del país: un aviso en Lima cambia mucho la cifra.</span>}
-          </div>
+          <ol className="pob-rank">
+            {expuestas.map((id) => {
+              const n = POBLACION[id] ?? 0;
+              return (
+                <li key={id}>
+                  <button onClick={() => irAlMapa(id, "indice")} aria-label={`${regs[id].nombre}: ${fmt(n / 1e6, 2)} millones de habitantes. Ver en el mapa`}>
+                    <span className="nom">{regs[id].nombre}</span>
+                    <span className="bar-track"><span className={`bar-fill ${catPob(id)}`} style={{ display: "block", width: `${(100 * n) / maxPob}%` }} /></span>
+                    <span className="val num">{fmt(n / 1e6, 2)} M</span>
+                    <span className="tags">
+                      {depsRojo.has(id) && <span className="tag c-rojo">aviso rojo</span>}
+                      {regs[id].indice >= UMBRAL.riesgoAlto && <span className="tag c-alto">riesgo alto</span>}
+                      {extremo.has(id) && <span className="tag c-extremo">lluvia extrema</span>}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {expuestas.length === 0 && <li className="muted">Hoy ninguna región tiene aviso rojo por lluvias, riesgo alto ni lluvia extrema prevista.</li>}
+          </ol>
+          <p className="pob-pie muted">
+            Fuera de estas {expuestas.length} regiones viven {fmt((POBLACION_PERU - pobExpuesta) / 1e6, 1)} M de personas
+            ({fmt((100 * (POBLACION_PERU - pobExpuesta)) / POBLACION_PERU)} % del país).
+          </p>
           <div className="pob-leyenda">
             <span><i className="c-rojo" />Aviso rojo por lluvias</span><span><i className="c-alto" />Riesgo alto</span>
-            <span><i className="c-extremo" />Lluvia extrema prevista</span><span><i className="c-ok" />Sin señal fuerte</span>
+            <span><i className="c-extremo" />Lluvia extrema prevista</span>
           </div>
         </section>
       );
