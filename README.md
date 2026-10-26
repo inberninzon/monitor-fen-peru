@@ -2,7 +2,7 @@
 
 Dashboard para seguir El Niño 2026-27 en el Perú: qué regiones están más afectadas y qué pasa día a día.
 
-- **Hoy**: estado oficial del ENFEN, anomalía del mar en la región Niño 1+2, avisos SENAMHI, regiones más afectadas, comparación de 2026 con los Niños de 1982-83, 1997-98, 2015-16, 2017 y 2023-24, el mar en la costa, el pronóstico de lluvia y el PBI.
+- **Hoy**: estado oficial del ENFEN y los indicadores en cinco grupos — **Mar** (Niño 1+2 y su tendencia, semanas seguidas con El Niño, Niño 3.4, mar en la costa y la comparación de 2026 con los Niños de 1982-83, 1997-98, 2015-16, 2017 y 2023-24), **Lluvia y calor** (lluvia extrema pronosticada, exceso, máximo en 24 h, déficit y calor), **Alertas** (avisos SENAMHI y regiones más afectadas), **Personas** (población expuesta, con la estimación INEI 2025 de `app/src/poblacion.ts`) y **Economía** (PBI, sectores e inflación). Los umbrales están en `app/src/kpis.ts`. En pantallas grandes los grupos se recorren con un índice lateral; en el celular, con pestañas que se deslizan.
 - **Mapa vivo**: regiones coloreadas por afectación, lluvia, sequía, pronóstico o avisos; mar y lluvia por satélite con animación de 30 días; al tocar el mar se ve su temperatura y al tocar una región, su ficha.
 
 Sitio: https://inberninzon.github.io/monitor-fen-peru/
