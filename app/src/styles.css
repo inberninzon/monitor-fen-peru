@@ -497,3 +497,8 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .ok { color: var(--success-text); font-weight: 700; }
 .ko { color: var(--danger-text); font-weight: 700; }
 .loading { display: grid; place-items: center; height: 100%; color: var(--text-muted); }
+
+/* Botón con aspecto de enlace (por ejemplo, "Ver Tumbes" en la ficha de una provincia) */
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-ink); text-decoration: underline; cursor: pointer; }
+.link-btn:hover { text-decoration-thickness: 2px; }
+.nota-provisoria { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; background: var(--surface-2, rgba(127,127,127,.1)); color: var(--text-secondary); }

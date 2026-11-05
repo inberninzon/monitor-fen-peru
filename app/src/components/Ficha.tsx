@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type * as echarts from "echarts";
 import { Chart, tokens, tooltipBase } from "./Chart";
 import { Info } from "./Info";
-import { Datos, fechaCorta, fmt, signo } from "../data";
+import { cargarLluviaProv, Datos, DiaLluvia, esProvincia, fechaCorta, fmt, signo } from "../data";
 import { colorIndice } from "../escalas";
 
 const COMPONENTES: { k: "lluvia" | "intensidad" | "pronostico" | "avisos" | "calor"; n: string }[] = [
@@ -10,13 +10,31 @@ const COMPONENTES: { k: "lluvia" | "intensidad" | "pronostico" | "avisos" | "cal
   { k: "pronostico", n: "Pronóstico 7 días" }, { k: "avisos", n: "Avisos SENAMHI" }, { k: "calor", n: "Calor" },
 ];
 
-export function Ficha({ id, datos, cerrar }: { id: string; datos: Datos; cerrar: () => void }) {
+const SIN_SERIE: DiaLluvia[] = [];
+
+export function Ficha({ id, datos, cerrar, irA }: { id: string; datos: Datos; cerrar: () => void; irA: (id: string) => void }) {
   const [mini, setMini] = useState(false);
-  const r = datos.regiones.regiones[id];
-  const serie = datos.lluvia.departamentos[id].diario;
+  const prov = esProvincia(id);
+  const p = prov ? datos.provincias.provincias[id] : undefined;
+  const dep = prov ? p!.dep : id;
+  const r = prov ? p! : datos.regiones.regiones[id];
+  const depNombre = datos.regiones.regiones[dep]?.nombre ?? "";
+  // la serie diaria de las provincias se baja aparte, la primera vez que se abre una
+  const [serieProv, setSerieProv] = useState<{ puntos: number; diario: DiaLluvia[] } | null>(null);
+  const [errorSerie, setErrorSerie] = useState(false);
+  const provisoria = p?.normal === "provisoria";
+  useEffect(() => {
+    if (!prov || provisoria) return;
+    cargarLluviaProv().then((l) => setSerieProv(l.provincias[id] ?? null)).catch(() => setErrorSerie(true));
+  }, [id, prov, provisoria]);
+  // provincia con normal provisoria: se muestran los datos de su departamento (ver pipeline/indice.py)
+  const serie = prov && !provisoria ? serieProv?.diario ?? SIN_SERIE : datos.lluvia.departamentos[dep].diario;
+  const puntos = prov && !provisoria ? serieProv?.puntos : datos.lluvia.departamentos[dep].puntos;
+  const zonaTxt = prov && !provisoria ? "provincia" : "región";
   const hoy = datos.regiones.hoy;
   const t = tokens();
-  const avisos = datos.avisos.filter((a) => a.fin >= hoy && a.departamentos.includes(id));
+  const avisos = datos.avisos.filter((a) => a.fin >= hoy && a.departamentos.includes(dep));
+  const ranking = prov ? datos.provincias.ranking : datos.regiones.ranking;
 
   const lluviaOpt = useMemo<echarts.EChartsCoreOption>(() => ({
     grid: { left: 34, right: 10, top: 28, bottom: 24 },
@@ -60,12 +78,23 @@ export function Ficha({ id, datos, cerrar }: { id: string; datos: Datos; cerrar:
       <button className="handle" onClick={() => setMini(!mini)} aria-label={mini ? "Expandir ficha" : "Reducir ficha"} />
       <div className="ficha-head">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="muted" style={{ fontSize: 12 }}>{r.zona === "Lima" ? "Lima y Callao" : `Zona ${r.zona.toLowerCase()}`} · capital {r.capital}</div>
+          {prov ? (
+            <div className="muted" style={{ fontSize: 12 }}>
+              Provincia · <button className="link-btn" onClick={() => irA(dep)}>Ver {depNombre}</button>
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 12 }}>{r.zona === "Lima" ? "Lima y Callao" : `Zona ${r.zona.toLowerCase()}`} · capital {datos.regiones.regiones[id].capital}</div>
+          )}
           <h2>{r.nombre}</h2>
         </div>
         <button className="icon-btn" onClick={cerrar} aria-label="Cerrar ficha">✕</button>
       </div>
       <div className="ficha-body">
+        {provisoria && (
+          <p className="nota-provisoria">
+            Todavía se está calculando la normal climática de esta provincia. Mientras tanto se muestran los datos de <strong>{depNombre}</strong>.
+          </p>
+        )}
         <section>
           <div style={{ display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
             <div className="big-index">
@@ -74,8 +103,8 @@ export function Ficha({ id, datos, cerrar }: { id: string; datos: Datos; cerrar:
             </div>
             <span style={{ flex: 1 }} />
             <Info>
-              El índice resume qué tan afectada está la región hoy frente a lo normal. Cada barra muestra el aporte de un componente (0 a 1);
-              los pesos están en la ficha de fuentes. Puesto {datos.regiones.ranking.indexOf(id) + 1} de 25.
+              El índice resume qué tan afectada está {prov ? "la provincia" : "la región"} hoy frente a lo normal. Cada barra muestra el aporte de un componente (0 a 1);
+              los pesos están en la ficha de fuentes. Puesto {ranking.indexOf(id) + 1} de {ranking.length}{prov ? " provincias" : ""}.
             </Info>
           </div>
           <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
@@ -97,7 +126,9 @@ export function Ficha({ id, datos, cerrar }: { id: string; datos: Datos; cerrar:
             <div className="stat"><div className="l">Máx. en un día (3 días)</div><div className="v num">{fmt(r.lluvia.max24)} mm</div><div className="l">en el punto más lluvioso</div></div>
             <div className="stat"><div className="l">Próximos 7 días</div><div className="v num">{fmt(r.lluvia.fc7)} mm</div><div className="l">normal {fmt(r.lluvia.normfc7)} mm</div></div>
           </div>
-          <Chart className="chart sm" option={lluviaOpt} label={`Lluvia diaria en ${r.nombre}, últimos 60 días y pronóstico`} />
+          {serie.length > 0
+            ? <Chart className="chart sm" option={lluviaOpt} label={`Lluvia diaria en ${r.nombre}, últimos 60 días y pronóstico`} />
+            : <p className="muted" style={{ fontSize: 12.5 }}>{errorSerie ? "No se pudo cargar la serie diaria." : "Cargando la serie diaria…"}</p>}
         </section>
 
         <section>
@@ -105,12 +136,13 @@ export function Ficha({ id, datos, cerrar }: { id: string; datos: Datos; cerrar:
           <p className="secondary" style={{ margin: "0 0 4px", fontSize: 13 }}>
             Última semana: <strong>{signo(r.tmax_anom7)} °C</strong> frente a lo normal.
           </p>
-          <Chart className="chart sm" option={tempOpt} label={`Temperatura máxima diaria en ${r.nombre}`} />
+          {serie.length > 0 && <Chart className="chart sm" option={tempOpt} label={`Temperatura máxima diaria en ${r.nombre}`} />}
         </section>
 
         <section>
-          <div className="seccion-t">Avisos SENAMHI</div>
-          {avisos.length === 0 && <p className="muted" style={{ margin: 0 }}>Sin avisos activos para esta región.</p>}
+          <div className="seccion-t">Avisos SENAMHI{prov ? ` · ${depNombre}` : ""}</div>
+          {prov && <p className="muted" style={{ margin: "0 0 6px", fontSize: 12.5 }}>SENAMHI publica los avisos por departamento: son los de {depNombre}.</p>}
+          {avisos.length === 0 && <p className="muted" style={{ margin: 0 }}>Sin avisos activos para {prov ? "este departamento" : "esta región"}.</p>}
           <ul className="avisos" style={{ maxHeight: "none" }}>
             {avisos.map((a) => (
               <li key={a.numero} className="aviso">
@@ -124,7 +156,8 @@ export function Ficha({ id, datos, cerrar }: { id: string; datos: Datos; cerrar:
           </ul>
         </section>
         <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-          Promedio de {datos.lluvia.departamentos[id].puntos} puntos de la región. Lluvia y temperatura: Open-Meteo; normal 2006-2020: ERA5.
+          {puntos ? (puntos === 1 ? `Dato de 1 punto en el centro de la ${zonaTxt}. ` : `Promedio de ${puntos} puntos de la ${zonaTxt}. `) : ""}
+          Lluvia y temperatura: Open-Meteo; normal 2006-2020: ERA5.
         </p>
       </div>
     </aside>
