@@ -71,3 +71,27 @@ DEPARTAMENTOS = {
     "24": ("Tumbes", "Tumbes", -3.57, -80.45, "Norte"),
     "25": ("Ucayali", "Pucallpa", -8.38, -74.55, "Oriente"),
 }
+
+
+# Provincias: el TopoJSON (pe-atlas) trae los nombres en mayúsculas, sin tildes y con la Ñ mal codificada.
+_TILDES = {
+    "ASUNCION": "Asunción", "BONGARA": "Bongará", "RODRIGUEZ": "Rodríguez", "FERMIN": "Fermín", "CAMANA": "Camaná",
+    "CARAVELI": "Caravelí", "UNION": "Unión", "HUAMAN": "Huamán", "PAUCAR": "Páucar", "VICTOR": "Víctor",
+    "CELENDIN": "Celendín", "CONTUMAZA": "Contumazá", "JAEN": "Jaén", "CONVENCION": "Convención",
+    "HUAYTARA": "Huaytará", "HUANUCO": "Huánuco", "MARAÑON": "Marañón", "HUAMALIES": "Huamalíes",
+    "CONCEPCION": "Concepción", "JUNIN": "Junín", "BOLIVAR": "Bolívar", "CHEPEN": "Chepén", "JULCAN": "Julcán",
+    "SANCHEZ": "Sánchez", "CARRION": "Carrión", "CHIMU": "Chimú", "VIRU": "Virú", "HUAROCHIRI": "Huarochirí",
+    "OYON": "Oyón", "RAMON": "Ramón", "MORROPON": "Morropón", "AZANGARO": "Azángaro", "HUANCANE": "Huancané",
+    "ROMAN": "Román", "MARTIN": "Martín", "CACERES": "Cáceres", "PURUS": "Purús",
+}
+_MINUSCULA = {"DE", "DEL", "LA", "LAS", "LOS", "Y"}
+
+
+def nombre_provincia(crudo: str) -> str:
+    try:
+        crudo = crudo.encode("cp1252").decode("utf-8")  # "MARAÃ‘ON" -> "MARAÑON"
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    palabras = crudo.strip().split()
+    return " ".join(
+        p.lower() if i and p in _MINUSCULA else _TILDES.get(p, p.capitalize()) for i, p in enumerate(palabras))

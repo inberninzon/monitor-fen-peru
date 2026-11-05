@@ -12,6 +12,11 @@ export type Region = {
   tmax_anom7: number;
   avisos: number[];
 };
+// Provincia: mismo cálculo que la región; los avisos son los de su departamento (`dep`)
+export type Provincia = Omit<Region, "capital"> & { dep: string; normal: "propia" | "provisoria" };
+export type Provincias = { actualizado: string; hoy: string; ranking: string[]; provincias: Record<string, Provincia> };
+export type LluviaProv = { actualizado: string; hoy: string; provincias: Record<string, { nombre: string; dep: string; puntos: number; normal: string; diario: DiaLluvia[] }> };
+export const esProvincia = (id: string) => id.length === 4;
 export type Regiones = { actualizado: string; hoy: string; pesos: Record<string, number>; ranking: string[]; regiones: Record<string, Region> };
 export type Aviso = {
   numero: number; estado: string; titulo: string; emision: string; inicio: string; fin: string; duracion: string;
@@ -33,7 +38,7 @@ export type Lluvia = { actualizado: string; hoy: string; departamentos: Record<s
 export type Estado = { corrida: string; fuentes: Record<string, { nombre: string; ok: boolean; ultimo_ok: string | null; error?: string }> };
 
 export type Datos = {
-  regiones: Regiones; avisos: Aviso[]; mar: Mar; enfen: Enfen; pbi: Pbi; lluvia: Lluvia;
+  regiones: Regiones; provincias: Provincias; avisos: Aviso[]; mar: Mar; enfen: Enfen; pbi: Pbi; lluvia: Lluvia;
   capas: Record<string, Capa>; estado: Estado | null; topo: any;
 };
 
@@ -44,12 +49,21 @@ async function j<T>(nombre: string): Promise<T> {
 }
 
 export async function cargarDatos(): Promise<Datos> {
-  const [regiones, avisos, mar, enfen, pbi, lluvia, capas, topo, estado] = await Promise.all([
-    j<Regiones>("regiones.json"), j<{ avisos: Aviso[] }>("avisos.json"), j<Mar>("mar.json"), j<Enfen>("enfen.json"),
+  const [regiones, provincias, avisos, mar, enfen, pbi, lluvia, capas, topo, estado] = await Promise.all([
+    j<Regiones>("regiones.json"),
+    j<Provincias>("provincias.json").catch(() => ({ actualizado: "", hoy: "", ranking: [], provincias: {} })),
+    j<{ avisos: Aviso[] }>("avisos.json"), j<Mar>("mar.json"), j<Enfen>("enfen.json"),
     j<Pbi>("pbi.json"), j<Lluvia>("lluvia.json"), j<{ capas: Record<string, Capa> }>("capas.json"),
-    j<any>("departamentos.topo.json"), j<Estado>("estado.json").catch(() => null),
+    j<any>("peru.topo.json"), j<Estado>("estado.json").catch(() => null),
   ]);
-  return { regiones, avisos: avisos.avisos, mar, enfen, pbi, lluvia, capas: capas.capas, topo, estado };
+  return { regiones, provincias, avisos: avisos.avisos, mar, enfen, pbi, lluvia, capas: capas.capas, topo, estado };
+}
+
+// La serie diaria de las provincias pesa ~1 MB: se baja solo al abrir la ficha de una provincia
+let lluviaProv: Promise<LluviaProv> | null = null;
+export function cargarLluviaProv(): Promise<LluviaProv> {
+  lluviaProv ??= j<LluviaProv>("lluvia_prov.json").catch((e) => { lluviaProv = null; throw e; });
+  return lluviaProv;
 }
 
 // ---------- Formato ----------

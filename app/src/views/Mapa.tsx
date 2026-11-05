@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { GeoJSONSource, Map as MLMap, RasterTileSource } from "maplibre-gl";
 import { feature } from "topojson-client";
 import type { FeatureCollection } from "geojson";
-import { Datos, fechaCorta, fmt, signo } from "../data";
+import { Datos, esProvincia, fechaCorta, fmt, Provincia, Region, signo } from "../data";
 import {
   colorIndice, DIVERGENTE, DIVERGENTE_STOPS, INDICE_RAMP, INDICE_STOPS, interpolar,
   LLUVIA_RAMP, LLUVIA_STOPS, NIVEL_COLOR, NIVEL_NOMBRE,
@@ -20,11 +20,15 @@ const METRICAS: { id: Metrica; nombre: string; desc: string }[] = [
   { id: "mar", nombre: "Solo mar", desc: "Quita el color de las regiones para ver el mar: anomalía de temperatura por satélite y temperatura en la costa." },
 ];
 
+export type Nivel = "region" | "provincia";
+const NIVELES: { id: Nivel; nombre: string }[] = [{ id: "region", nombre: "Región" }, { id: "provincia", nombre: "Provincia" }];
+
 const PERU: [number, number, number, number] = [-84.5, -18.6, -68.5, 0.2];
 
-function valorRegion(datos: Datos, id: string, m: Metrica): { valor: number | null; color: string; texto: string } {
-  const r = datos.regiones.regiones[id];
+// `dep` es el departamento al que pertenece la zona (el mismo id si es una región): los avisos se leen por departamento
+function valorRegion(datos: Datos, r: Region | Provincia | undefined, dep: string, m: Metrica): { valor: number | null; color: string; texto: string } {
   if (!r) return { valor: null, color: "transparent", texto: "—" };
+  const id = dep;
   const hoy = datos.regiones.hoy;
   switch (m) {
     case "indice":
@@ -69,7 +73,9 @@ function estiloBase(oscuro: boolean): maplibregl.StyleSpecification {
 }
 
 type Props = {
-  datos: Datos; oscuro: boolean; region: string | null; setRegion: (r: string | null) => void;
+  datos: Datos; oscuro: boolean;
+  /** Zona elegida: id de departamento (2 dígitos) o de provincia (4 dígitos) */
+  region: string | null; setRegion: (r: string | null) => void;
   metrica: Metrica; setMetrica: (m: Metrica) => void;
 };
 
@@ -80,6 +86,9 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
   const [verMar, setVerMar] = useState(true);
   const [verSat, setVerSat] = useState(false);
   const [panelAbierto, setPanelAbierto] = useState(false);
+  const [nivel, setNivel] = useState<Nivel>(region && esProvincia(region) ? "provincia" : "region");
+  const nivelRef = useRef(nivel);
+  nivelRef.current = nivel;
   const capaMar = datos.capas.mar;
   const capaSat = datos.capas.lluvia_sat;
   const fechasSat = useMemo(() => {
@@ -91,15 +100,28 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
   const fecha = fechasSat[Math.min(iFecha, fechasSat.length - 1)];
 
   const geo = useMemo(() => feature(datos.topo, datos.topo.objects.departments) as unknown as FeatureCollection, [datos.topo]);
+  const geoProv = useMemo(() => feature(datos.topo, datos.topo.objects.provinces) as unknown as FeatureCollection, [datos.topo]);
 
   const geoPintado = useMemo<FeatureCollection>(() => ({
     type: "FeatureCollection",
     features: geo.features.map((f) => {
       const id = String(f.id);
-      const v = valorRegion(datos, id, metrica);
-      return { ...f, id: Number(id), properties: { ...f.properties, did: id, nombre: datos.regiones.regiones[id]?.nombre ?? id, color: v.color, texto: v.texto } };
+      const v = valorRegion(datos, datos.regiones.regiones[id], id, metrica);
+      return { ...f, id: Number(id), properties: { did: id, nombre: datos.regiones.regiones[id]?.nombre ?? id, color: v.color, texto: v.texto } };
     }),
   }), [geo, datos, metrica]);
+
+  const provPintado = useMemo<FeatureCollection>(() => ({
+    type: "FeatureCollection",
+    features: geoProv.features.map((f) => {
+      const id = String(f.id);
+      const p = datos.provincias.provincias[id];
+      const v = p ? valorRegion(datos, p, p.dep, metrica) : { color: "#d9d8d2", texto: "Sin datos todavía" };
+      if (p?.normal === "provisoria" && v.texto) v.texto += `<br/><span class="muted">Datos de ${datos.regiones.regiones[p.dep]?.nombre} mientras se calcula la normal de la provincia</span>`;
+      const dep = datos.regiones.regiones[id.slice(0, 2)]?.nombre ?? "";
+      return { ...f, id: Number(id), properties: { did: id, nombre: `${p?.nombre ?? id} <span class="muted">· ${dep}</span>`, color: v.color, texto: v.texto } };
+    }),
+  }), [geoProv, datos, metrica]);
 
   // ---------- Crear mapa ----------
   useEffect(() => {
@@ -126,12 +148,23 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
         "fill-color": ["get", "color"],
         "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.92, 0.78],
       } });
+      map.addSource("provs", { type: "geojson", data: provPintado });
+      map.addLayer({ id: "provs-fill", type: "fill", source: "provs", layout: { visibility: "none" }, paint: {
+        "fill-color": ["get", "color"],
+        "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.92, 0.78],
+      } });
+      map.addLayer({ id: "provs-line", type: "line", source: "provs", layout: { visibility: "none" }, paint: {
+        "line-color": oscuro ? "#0b0f10" : "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.3, 8, 1],
+      } });
+      // en el nivel provincia, el borde de los departamentos queda encima como referencia
       map.addLayer({ id: "deps-line", type: "line", source: "deps", paint: {
         "line-color": oscuro ? "#0b0f10" : "#ffffff", "line-width": 1,
       } });
-      map.addLayer({ id: "deps-sel", type: "line", source: "deps", filter: ["==", ["get", "did"], ""], paint: {
-        "line-color": oscuro ? "#ffffff" : "#0b0b0b", "line-width": 3,
-      } });
+      for (const fuente of ["deps", "provs"]) {
+        map.addLayer({ id: `${fuente}-sel`, type: "line", source: fuente, filter: ["==", ["get", "did"], ""], paint: {
+          "line-color": oscuro ? "#ffffff" : "#0b0b0b", "line-width": 3,
+        } });
+      }
       map.addLayer({ id: "etiquetas", type: "raster", source: "etiquetas", paint: { "raster-opacity": 0.9 } });
 
       // Puntos de la costa con la temperatura del mar de hoy
@@ -152,26 +185,28 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
       setListo(true);
     });
 
-    // Hover
-    let hoverId: number | string | undefined;
+    // Hover (en la capa del nivel que se ve)
     const tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: "tip" });
-    map.on("mousemove", "deps-fill", (e) => {
-      const f = e.features?.[0];
-      if (!f) return;
-      if (hoverId !== undefined) map.setFeatureState({ source: "deps", id: hoverId }, { hover: false });
-      hoverId = f.id;
-      map.setFeatureState({ source: "deps", id: hoverId! }, { hover: true });
-      map.getCanvas().style.cursor = "pointer";
-      if (matchMedia("(hover: hover)").matches) {
-        tip.setLngLat(e.lngLat).setHTML(`<div class="popup-mar"><strong>${f.properties!.nombre}</strong><br/>${f.properties!.texto}</div>`).addTo(map);
-      }
-    });
-    map.on("mouseleave", "deps-fill", () => {
-      if (hoverId !== undefined) map.setFeatureState({ source: "deps", id: hoverId }, { hover: false });
-      hoverId = undefined;
-      map.getCanvas().style.cursor = "";
-      tip.remove();
-    });
+    for (const fuente of ["deps", "provs"]) {
+      let hoverId: number | string | undefined;
+      map.on("mousemove", `${fuente}-fill`, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        if (hoverId !== undefined) map.setFeatureState({ source: fuente, id: hoverId }, { hover: false });
+        hoverId = f.id;
+        map.setFeatureState({ source: fuente, id: hoverId! }, { hover: true });
+        map.getCanvas().style.cursor = "pointer";
+        if (matchMedia("(hover: hover)").matches) {
+          tip.setLngLat(e.lngLat).setHTML(`<div class="popup-mar"><strong>${f.properties!.nombre}</strong><br/>${f.properties!.texto}</div>`).addTo(map);
+        }
+      });
+      map.on("mouseleave", `${fuente}-fill`, () => {
+        if (hoverId !== undefined) map.setFeatureState({ source: fuente, id: hoverId }, { hover: false });
+        hoverId = undefined;
+        map.getCanvas().style.cursor = "";
+        tip.remove();
+      });
+    }
 
     // Clic: región -> ficha; mar -> temperatura en ese punto
     map.on("click", async (e) => {
@@ -182,7 +217,7 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
           `<div class="popup-mar"><div style="font-size:12px;color:#555">${p.nombre} · temperatura del mar hoy</div><b>${fmt(p.actual, 1)} °C</b><div style="font-size:12px">${signo(p.cambio)} °C en 30 días</div></div>`).addTo(map);
         return;
       }
-      const dep = map.queryRenderedFeatures(e.point, { layers: ["deps-fill"] })[0];
+      const dep = map.queryRenderedFeatures(e.point, { layers: [nivelRef.current === "provincia" ? "provs-fill" : "deps-fill"] })[0];
       if (dep) { setRegion(String(dep.properties!.did)); return; }
       const pop = new maplibregl.Popup({ offset: 6 }).setLngLat(e.lngLat).setHTML('<div class="popup-mar">Consultando el mar…</div>').addTo(map);
       try {
@@ -209,19 +244,45 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
     const map = mapRef.current;
     if (!listo || !map) return;
     (map.getSource("deps") as GeoJSONSource).setData(geoPintado);
-    map.setPaintProperty("deps-fill", "fill-opacity", metrica === "mar"
-      ? 0 : ["case", ["boolean", ["feature-state", "hover"], false], 0.92, 0.78]);
-  }, [geoPintado, listo, metrica]);
+    (map.getSource("provs") as GeoJSONSource).setData(provPintado);
+    for (const capa of ["deps-fill", "provs-fill"]) {
+      map.setPaintProperty(capa, "fill-opacity", metrica === "mar"
+        ? 0 : ["case", ["boolean", ["feature-state", "hover"], false], 0.92, 0.78]);
+    }
+  }, [geoPintado, provPintado, listo, metrica]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!listo || !map) return;
-    map.setFilter("deps-sel", ["==", ["get", "did"], region ?? ""]);
-    if (region) {
-      const r = datos.regiones.regiones[region];
+    const prov = nivel === "provincia";
+    map.setLayoutProperty("deps-fill", "visibility", prov ? "none" : "visible");
+    map.setLayoutProperty("provs-fill", "visibility", prov ? "visible" : "none");
+    map.setLayoutProperty("provs-line", "visibility", prov ? "visible" : "none");
+    map.setPaintProperty("deps-line", "line-width", prov ? 2 : 1);
+  }, [nivel, listo]);
+
+  // Al cambiar de nivel se cierra la ficha si es del otro nivel
+  const cambiarNivel = (n: Nivel) => {
+    setNivel(n);
+    if (region && esProvincia(region) !== (n === "provincia")) setRegion(null);
+  };
+  // Elegir una zona de cualquier nivel (por ejemplo, "Ver departamento" desde la ficha de una provincia)
+  const irA = (id: string) => {
+    setNivel(esProvincia(id) ? "provincia" : "region");
+    setRegion(id);
+  };
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!listo || !map) return;
+    const prov = !!region && esProvincia(region);
+    map.setFilter("deps-sel", ["==", ["get", "did"], !prov ? region ?? "" : ""]);
+    map.setFilter("provs-sel", ["==", ["get", "did"], prov ? region : ""]);
+    const r = region ? (prov ? datos.provincias.provincias[region] : datos.regiones.regiones[region]) : undefined;
+    if (r) {
       const movil = innerWidth <= 760;
       // en el celular la ficha tapa la mitad inferior: se centra la región en la mitad visible
-      map.easeTo({ center: [r.lon, r.lat], zoom: Math.max(map.getZoom(), 5.2), duration: 800,
+      map.easeTo({ center: [r.lon, r.lat], zoom: Math.max(map.getZoom(), prov ? 6.3 : 5.2), duration: 800,
         padding: movil ? { top: 40, bottom: Math.round(innerHeight * 0.55), left: 0, right: 0 } : { top: 0, bottom: 0, left: 300, right: 400 } });
     }
   }, [region, listo, datos]);
@@ -256,6 +317,7 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
   }, [reproduciendo, fechasSat.length]);
 
   const desc = METRICAS.find((m) => m.id === metrica)!;
+  const provPendientes = Object.values(datos.provincias.provincias).filter((p) => p.normal === "provisoria").length;
   const satActiva = verMar || verSat || metrica === "mar";
 
   return (
@@ -268,10 +330,23 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
 
       <div className={`map-ui panel capas ${panelAbierto ? "" : "cerrado"}`}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          <h3>Colorear regiones por</h3>
+          <h3>Nivel</h3>
           <span style={{ flex: 1 }} />
           {panelAbierto && <button className="icon-btn" style={{ width: 28, height: 28 }} onClick={() => setPanelAbierto(false)} aria-label="Cerrar capas">✕</button>}
         </div>
+        <div className="chips" role="radiogroup" aria-label="Nivel del mapa">
+          {NIVELES.map((n) => (
+            <button key={n.id} className="chip" role="radio" aria-pressed={nivel === n.id} aria-checked={nivel === n.id}
+              onClick={() => cambiarNivel(n.id)}>{n.nombre}</button>
+          ))}
+        </div>
+        {nivel === "provincia" && (
+          <p className="capa-desc">
+            Lluvia, calor e índice por provincia. Los avisos SENAMHI se publican por departamento: cada provincia toma los del suyo.
+            {provPendientes > 0 && ` La normal climática de ${provPendientes} de ${Object.keys(datos.provincias.provincias).length} provincias aún se está calculando: mientras tanto muestran los datos de su departamento.`}
+          </p>
+        )}
+        <h3>Colorear {nivel === "provincia" ? "provincias" : "regiones"} por</h3>
         <div className="chips" role="radiogroup" aria-label="Métrica de las regiones">
           {METRICAS.map((m) => (
             <button key={m.id} className="chip" role="radio" aria-pressed={metrica === m.id} aria-checked={metrica === m.id}
@@ -289,7 +364,7 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
           </button>
         </div>
         <p className="capa-desc">
-          Toca el <strong>mar</strong> para ver su temperatura en ese punto, o una <strong>región</strong> para abrir su ficha.
+          Toca el <strong>mar</strong> para ver su temperatura en ese punto, o una <strong>{nivel === "provincia" ? "provincia" : "región"}</strong> para abrir su ficha.
         </p>
       </div>
 
@@ -310,8 +385,8 @@ export function Mapa({ datos, oscuro, region, setRegion, metrica, setMetrica }: 
         </div>
       )}
 
-      {region && datos.regiones.regiones[region] && (
-        <Ficha key={region} id={region} datos={datos} cerrar={() => setRegion(null)} />
+      {region && (esProvincia(region) ? datos.provincias.provincias[region] : datos.regiones.regiones[region]) && (
+        <Ficha key={region} id={region} datos={datos} cerrar={() => setRegion(null)} irA={irA} />
       )}
     </div>
   );
